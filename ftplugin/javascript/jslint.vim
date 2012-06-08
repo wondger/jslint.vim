@@ -1,4 +1,3 @@
-
 " Global Options
 "
 " Enable/Disable highlighting of errors in source.
@@ -6,6 +5,10 @@
 " To disable the highlighting put the line
 " let g:JSLintHighlightErrorLine = 0
 " in your .vimrc
+"
+" fork by wondger
+" To disable auto check
+" let g:JSLintAuto = 0
 "
 if exists("b:did_jslint_plugin")
   finish
@@ -16,18 +19,24 @@ endif
 let s:install_dir = expand('<sfile>:p:h')
 
 au BufLeave <buffer> call s:JSLintClear()
+au InsertLeave <buffer> call s:JSLintCheck()
+"au InsertEnter <buffer> call s:JSLintCheck()
+au BufWritePost <buffer> call s:JSLintCheck()
 
-au BufEnter <buffer> call s:JSLint()
-au InsertLeave <buffer> call s:JSLint()
-"au InsertEnter <buffer> call s:JSLint()
-au BufWritePost <buffer> call s:JSLint()
+if exists("g:JSLintAuto") && g:JSLintAuto == 0
+else
+    au BufEnter <buffer> call s:JSLint()
+endif
 
 " due to http://tech.groups.yahoo.com/group/vimdev/message/52115
 if(!has("win32") || v:version>702)
-  au CursorHold <buffer> call s:JSLint()
-  au CursorHoldI <buffer> call s:JSLint()
+    if exists("g:JSLintAuto") && g:JSLintAuto == 0
+    else
+        au CursorHold <buffer> call s:JSLint()
+        au CursorHoldI <buffer> call s:JSLint()
 
-  au CursorHold <buffer> call s:GetJSLintMessage()
+        au CursorHold <buffer> call s:GetJSLintMessage()
+    endif
 endif
 
 au CursorMoved <buffer> call s:GetJSLintMessage()
@@ -43,17 +52,32 @@ if !exists("*s:JSLintUpdate")
   endfunction
 endif
 
+function! s:JSLintUpdateAfterBuf()
+  if exists("b:JSLintActive") && b:JSLintActive == 0
+    return
+  endif
+
+  call s:JSLintUpdate()
+endfunction
+
 if !exists(":JSLintUpdate")
   command JSLintUpdate :call s:JSLintUpdate()
+  command JSLintUpdateAfterBuf :call s:JSLintUpdateAfterBuf()
+endif
+if !exists(":JSLintClear")
+  command JSLintClear :call s:JSLintClear()
 endif
 if !exists(":JSLintToggle")
   command JSLintToggle :let b:jslint_disabled = exists('b:jslint_disabled') ? b:jslint_disabled ? 0 : 1 : 1
 endif
 
-noremap <buffer><silent> dd dd:JSLintUpdate<CR>
-noremap <buffer><silent> dw dw:JSLintUpdate<CR>
-noremap <buffer><silent> u u:JSLintUpdate<CR>
-noremap <buffer><silent> <C-R> <C-R>:JSLintUpdate<CR>
+if exists("g:JSLintAuto") && g:JSLintAuto == 0
+else
+    noremap <buffer><silent> dd dd:JSLintUpdateAfterBuf<CR>
+    noremap <buffer><silent> dw dw:JSLintUpdateAfterBuf<CR>
+    noremap <buffer><silent> u u:JSLintUpdateAfterBuf<CR>
+    noremap <buffer><silent> <C-R> <C-R>:JSLintUpdateAfterBuf<CR>
+endif
 
 " Set up command and parameters
 if has("win32")
@@ -85,7 +109,12 @@ let s:jslintrc_file = expand('~/.jslintrc')
 if filereadable(s:jslintrc_file)
   let s:jslintrc = readfile(s:jslintrc_file)
 else
-  let s:jslintrc = []
+    let s:jslintrc_file = s:install_dir . '/.jslintrc'
+    if filereadable(s:jslintrc_file)
+        let s:jslintrc = readfile(s:jslintrc_file)
+    else
+        let s:jslintrc = []
+    endif
 end
 
 " load .jslintrc file from the current (pwd) directory if exists
@@ -113,6 +142,12 @@ if !exists("*s:WideMsg")
   endfun
 endif
 
+function! s:JSLintCheck()
+  if exists("b:JSLintActive") && b:JSLintActive == 0
+    return
+  endif
+  silent call s:JSLint()
+endfunction
 
 function! s:JSLintClear()
   " Delete previous matches
@@ -125,6 +160,7 @@ function! s:JSLintClear()
   let b:matched = []
   let b:matchedlines = {}
   let b:cleared = 1
+  let b:JSLintActive = 0
 endfunction
 
 function! s:JSLint()
@@ -133,13 +169,15 @@ function! s:JSLint()
   endif
 
   highlight link JSLintError SpellBad
-
+  
   if exists("b:cleared")
     if b:cleared == 0
       call s:JSLintClear()
     endif
     let b:cleared = 1
   endif
+
+  let b:JSLintActive = 1
 
   let b:matched = []
   let b:matchedlines = {}
@@ -291,4 +329,3 @@ if !exists("*s:ActivateJSLintQuickFixWindow")
         endif
     endfunction
 endif
-
